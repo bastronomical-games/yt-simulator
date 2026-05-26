@@ -652,13 +652,16 @@ export default function YouTubeSimulator() {
   const cooldownRef = useRef(null);
 
   // Refs to avoid stale closures inside setInterval
-  // Copyright cooldown ref — prevents claims firing too close together
-  const lastClaimRef = useRef(0);
+  // Refs to avoid stale closures inside setInterval
+  const subsRef = useRef(0);
   const suspicionRef = useRef(0);
   const monetisedRef = useRef(false);
   const suspendedRef = useRef(false);
   const bannedRef = useRef(false);
   const copyrightActiveRef = useRef(false);
+
+  // Copyright cooldown ref — prevents claims firing too close together
+  const lastClaimRef = useRef(0);
 
   // Keep refs in sync
   useEffect(() => { subsRef.current = subs; }, [subs]);
