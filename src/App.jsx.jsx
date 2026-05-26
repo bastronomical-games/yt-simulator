@@ -35,11 +35,11 @@ const THUMBNAILS_BY_CATEGORY = {
 const MILESTONES = [
   { subs:0,        label:"Nobody",          color:"#888",    badge:"👤", perk:"Start your journey" },
   { subs:100,      label:"Starter",         color:"#a0522d", badge:"🌱", perk:"You're getting noticed!" },
-  { subs:1000,     label:"Rising Star",     color:"#4a9eff", badge:"⭐", perk:"Eligible for monetisation and +10% views" },
-  { subs:100000,    label:"Silver Creator",  color:"#aaa",    badge:"🥈", perk:"Silver Play Button! Eligible for verification" },
-  { subs:1000000,   label:"Gold Creator",    color:"#ffd700", badge:"🥇", perk:"Gold Play Button!" },
-  { subs:10000000,  label:"Diamond Creator", color:"#b9f2ff", badge:"💎", perk:"Diamond Play Button! Brand deals" },
-  { subs:100000000, label:"LEGEND",          color:"#ff4444", badge:"👑", perk:"Ruby Button! YOU ARE YOUTUBE" },
+  { subs:1000,     label:"Rising Star",     color:"#4a9eff", badge:"⭐", perk:"Eligible for monetisation" },
+  { subs:10000,    label:"Silver Creator",  color:"#aaa",    badge:"🥈", perk:"Silver Play Button! +10% views" },
+  { subs:100000,   label:"Gold Creator",    color:"#ffd700", badge:"🥇", perk:"Gold Play Button! Eligible for verification" },
+  { subs:1000000,  label:"Diamond Creator", color:"#b9f2ff", badge:"💎", perk:"Diamond Play Button! Brand deals" },
+  { subs:10000000, label:"LEGEND",          color:"#ff4444", badge:"👑", perk:"Ruby Button! YOU ARE YOUTUBE" },
 ];
 
 const UPGRADES = [
@@ -652,7 +652,8 @@ export default function YouTubeSimulator() {
   const cooldownRef = useRef(null);
 
   // Refs to avoid stale closures inside setInterval
-  const subsRef = useRef(0);
+  // Copyright cooldown ref — prevents claims firing too close together
+  const lastClaimRef = useRef(0);
   const suspicionRef = useRef(0);
   const monetisedRef = useRef(false);
   const suspendedRef = useRef(false);
@@ -700,10 +701,12 @@ export default function YouTubeSimulator() {
         setTotalEarned(t => t+inc);
       }
 
-      // Copyright claim — uses ref so no stale closure
-      // Chance: 2% base at 1K subs, scaling up to 15% at 1M+ subs
-      if (monetisedRef.current && subsRef.current > 1000 && !copyrightActiveRef.current) {
-        const claimChance = Math.min(0.15, 0.02 + (subsRef.current / 100000) * 0.03);
+      // Copyright claim — rare, scales with subs, minimum 60s between claims
+      const now = Date.now();
+      const timeSinceLastClaim = now - lastClaimRef.current;
+      if (monetisedRef.current && subsRef.current > 5000 && !copyrightActiveRef.current && timeSinceLastClaim > 60000) {
+        // 0.3% at 5K subs, scaling slowly to max 3% at 1M+ subs
+        const claimChance = Math.min(0.03, 0.003 + (subsRef.current / 1000000) * 0.027);
         if (Math.random() < claimChance) {
           setVideos(vids => {
             const eligible = vids.filter(v => !v.flopped && !v.copyrightClaimed && v.revenue > 0);
@@ -712,6 +715,7 @@ export default function YouTubeSimulator() {
             const lost = target.revenue;
             const song = COPYRIGHT_SONGS[Math.floor(Math.random() * COPYRIGHT_SONGS.length)];
             copyrightActiveRef.current = true;
+            lastClaimRef.current = now;
             setCopyrightEvent({ lost, song });
             setMoney(m => Math.max(0, m - lost));
             return vids.map(v => v.id === target.id ? { ...v, revenue:0, copyrightClaimed:true } : v);
