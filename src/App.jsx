@@ -35,9 +35,9 @@ const THUMBNAILS_BY_CATEGORY = {
 const MILESTONES = [
   { subs:0,        label:"Nobody",          color:"#888",    badge:"👤", perk:"Start your journey" },
   { subs:100,      label:"Starter",         color:"#a0522d", badge:"🌱", perk:"You're getting noticed!" },
-  { subs:1000,     label:"Rising Star",     color:"#4a9eff", badge:"⭐", perk:"Eligible for monetisation" },
-  { subs:100000,    label:"Silver Creator",  color:"#aaa",    badge:"🥈", perk:"Silver Play Button! +10% views" },
-  { subs:1000000,   label:"Gold Creator",    color:"#ffd700", badge:"🥇", perk:"Gold Play Button! Eligible for verification" },
+  { subs:1000,     label:"Rising Star",     color:"#4a9eff", badge:"⭐", perk:"Eligible for monetisation and +10% views" },
+  { subs:100000,    label:"Silver Creator",  color:"#aaa",    badge:"🥈", perk:"Silver Play Button! Eligible for verification" },
+  { subs:1000000,   label:"Gold Creator",    color:"#ffd700", badge:"🥇", perk:"Gold Play Button!" },
   { subs:10000000,  label:"Diamond Creator", color:"#b9f2ff", badge:"💎", perk:"Diamond Play Button! Brand deals" },
   { subs:100000000, label:"LEGEND",          color:"#ff4444", badge:"👑", perk:"Ruby Button! YOU ARE YOUTUBE" },
 ];
@@ -651,6 +651,22 @@ export default function YouTubeSimulator() {
   const passiveRef = useRef(null);
   const cooldownRef = useRef(null);
 
+  // Refs to avoid stale closures inside setInterval
+  const subsRef = useRef(0);
+  const suspicionRef = useRef(0);
+  const monetisedRef = useRef(false);
+  const suspendedRef = useRef(false);
+  const bannedRef = useRef(false);
+  const copyrightActiveRef = useRef(false);
+
+  // Keep refs in sync
+  useEffect(() => { subsRef.current = subs; }, [subs]);
+  useEffect(() => { suspicionRef.current = suspicion; }, [suspicion]);
+  useEffect(() => { monetisedRef.current = monetised; }, [monetised]);
+  useEffect(() => { suspendedRef.current = suspended; }, [suspended]);
+  useEffect(() => { bannedRef.current = banned; }, [banned]);
+  useEffect(() => { copyrightActiveRef.current = !!copyrightEvent; }, [copyrightEvent]);
+
   const addNotif = useCallback((msg, type="info") => {
     const id = Date.now() + Math.random();
     setNotifs(n => [...n, { id, msg, type }]);
@@ -675,35 +691,33 @@ export default function YouTubeSimulator() {
   // Passive tick
   useEffect(() => {
     passiveRef.current = setInterval(() => {
-      if (suspended || banned) return;
+      if (suspendedRef.current || bannedRef.current) return;
       const fx = getEffects();
-      if ((fx.passiveIncome||0) > 0 && monetised) {
+
+      if ((fx.passiveIncome||0) > 0 && monetisedRef.current) {
         const inc = fx.passiveIncome/60;
         setMoney(m => m+inc);
         setTotalEarned(t => t+inc);
       }
 
-      // Copyright claim: chance scales with subs (bigger = more labels target you)
-      // Only fires if monetised and has videos with revenue
-      setSubs(currentSubs => {
-        if (monetised && currentSubs > 1000 && !copyrightEvent) {
-          const claimChance = Math.min(0.018, 0.001 + currentSubs / 500000);
-          if (Math.random() < claimChance) {
-            setVideos(vids => {
-              const eligible = vids.filter(v => !v.flopped && v.revenue > 0);
-              if (eligible.length === 0) return vids;
-              const targetIdx = Math.floor(Math.random() * eligible.length);
-              const target = eligible[targetIdx];
-              const lost = target.revenue;
-              const song = COPYRIGHT_SONGS[Math.floor(Math.random() * COPYRIGHT_SONGS.length)];
-              setCopyrightEvent({ lost, song });
-              setMoney(m => Math.max(0, m - lost));
-              return vids.map(v => v.id === target.id ? { ...v, revenue: 0, copyrightClaimed: true } : v);
-            });
-          }
+      // Copyright claim — uses ref so no stale closure
+      // Chance: 2% base at 1K subs, scaling up to 15% at 1M+ subs
+      if (monetisedRef.current && subsRef.current > 1000 && !copyrightActiveRef.current) {
+        const claimChance = Math.min(0.15, 0.02 + (subsRef.current / 100000) * 0.03);
+        if (Math.random() < claimChance) {
+          setVideos(vids => {
+            const eligible = vids.filter(v => !v.flopped && !v.copyrightClaimed && v.revenue > 0);
+            if (eligible.length === 0) return vids;
+            const target = eligible[Math.floor(Math.random() * eligible.length)];
+            const lost = target.revenue;
+            const song = COPYRIGHT_SONGS[Math.floor(Math.random() * COPYRIGHT_SONGS.length)];
+            copyrightActiveRef.current = true;
+            setCopyrightEvent({ lost, song });
+            setMoney(m => Math.max(0, m - lost));
+            return vids.map(v => v.id === target.id ? { ...v, revenue:0, copyrightClaimed:true } : v);
+          });
         }
-        return currentSubs;
-      });
+      }
 
       setVideos(vids => vids.map(v => {
         if (v.flopped || v.views > 10000000) return v;
@@ -712,15 +726,15 @@ export default function YouTubeSimulator() {
         const gain = newViews - v.views;
         if (gain <= 0) return v;
         const newSubs = Math.floor(gain*0.02*(fx.subBoost||1));
-        const rev = monetised ? gain*0.003*(fx.revMult||1) : 0;
+        const rev = monetisedRef.current ? gain*0.003*(fx.revMult||1) : 0;
         setSubs(s => s+newSubs);
         setTotalViews(t => t+gain);
-        if (monetised) { setMoney(m=>m+rev); setTotalEarned(t=>t+rev); }
+        if (monetisedRef.current) { setMoney(m=>m+rev); setTotalEarned(t=>t+rev); }
         return { ...v, views:newViews, revenue:v.revenue+rev, likes:Math.floor(newViews*0.06), comments:Math.floor(newViews*0.008) };
       }));
     }, 2000);
     return () => clearInterval(passiveRef.current);
-  }, [ownedUpgrades, monetised, suspended, banned, copyrightEvent, getEffects]);
+  }, [ownedUpgrades, getEffects]);
 
   // Cooldown
   useEffect(() => {
@@ -812,18 +826,17 @@ export default function YouTubeSimulator() {
     if (money < pkg.cost || !monetised) return;
     setMoney(m => m - pkg.cost);
     setSubs(s => s + pkg.subs);
-    // Add suspicion
-    const newSuspicion = Math.min(100, suspicion + pkg.risk);
+    const newSuspicion = Math.min(100, suspicionRef.current + pkg.risk);
     setSuspicion(newSuspicion);
+    suspicionRef.current = newSuspicion;
     addNotif(`🤫 +${fmt(pkg.subs)} subs added. Be careful...`, "danger");
 
-    // Check for ban/suspension
     if (newSuspicion >= 100) {
       setTimeout(() => setBanned(true), 1500);
-    } else if (newSuspicion >= 60 && Math.random() < 0.4) {
+    } else if (newSuspicion >= 60 && Math.random() < 0.5) {
       setTimeout(() => setSuspended(true), 1500);
       addNotif("⚠️ YouTube has flagged your channel!", "danger");
-    } else if (newSuspicion >= 40 && Math.random() < 0.2) {
+    } else if (newSuspicion >= 30 && Math.random() < 0.3) {
       setTimeout(() => setSuspended(true), 1500);
       addNotif("⚠️ Suspicious activity detected!", "danger");
     }
