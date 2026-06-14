@@ -13,7 +13,7 @@ Built with React + Vite.
 3. **Apply for monetisation** once you hit 1,000 subscribers
 4. **Spend your earnings** on upgrades to grow faster
 5. **Apply for verification** at 100,000 subscribers
-6. **Reach 100,000,000 subscribers** to become a LEGEND
+6. **Reach 50,000,000 subscribers** to become a LEGEND
 
 ---
 
@@ -68,7 +68,7 @@ npm run build
 | 🥈 | Silver Creator | 100,000 |
 | 🥇 | Gold Creator | 1,000,000 |
 | 💎 | Diamond Creator | 10,000,000 |
-| 👑 | LEGEND | 100,000,000 |
+| 👑 | LEGEND | 50,000,000 |
 
 ---
 
